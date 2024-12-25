@@ -144,11 +144,14 @@ class AutoTrainer(Trainer):
             unified_strategy = dist.Strategy()
             unified_strategy._from_legacy_strategy(self.args.strategy)
 
-            # same logic as autocast_smart_context_manager() in trainer.py
-            if self.enable_autocast_context_manager:
-                unified_strategy.amp.custom_black_list.extend(["reduce_sum", "c_softmax_with_cross_entropy"])
-                if self.args.fp16_opt_level == "O2":
-                    unified_strategy.amp.custom_white_list.extend(["lookup_table", "lookup_table_v2"])
+            with self.autocast_smart_context_manager():
+                dygraph_tracer = paddle.paddle.base.framework._dygraph_tracer()
+                assert dygraph_tracer is not None, "dygraph_tracer is None, do you run in dynamic mode?"
+
+                unified_strategy.amp.dtype = dygraph_tracer._amp_dtype
+                white_list, black_list = dygraph_tracer._get_amp_op_list()
+                unified_strategy.amp.custom_white_list += white_list
+                unified_strategy.amp.custom_black_list += black_list
 
             # dist.to_static() obtains the input spec information through next(dataloader), but this has side effects
             # on the passed-in dataloader, altering the state of the sampler of the dataloader. In some cases, once
