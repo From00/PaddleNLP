@@ -16,26 +16,27 @@
 set -x
 unset CUDA_VISIBLE_DEVICES
 
-task_name="deepseekv3"
+task_name="deepseekv3_auto"
 rm -rf output/$task_name/
 rm -rf "output/$task_name""_log"
 
 export SOT_LOG_LEVEL=4
 export PYTHONPATH=../../../:$PYTHONPATH
-#ulimit -c unlimited
-# export GLOG_v=3
 
-# export FLAGS_call_stack_level=3
-# export FLAGS_use_cuda_managed_memory=true
+#export DISTRIBUTED_TRAINER_ENDPOINTS="10.67.188.11:8544"
+
+# ulimit -c unlimited
+#export GLOG_v=8
+#export FLAGS_print_ir=1
+export FLAGS_call_stack_level=3
 
 # export FLAGS_embedding_deterministic=1        
 # export FLAGS_cudnn_deterministic=1
 # export NVIDIA_TF32_OVERRIDE=0
 
-to_static=0  # 是否开启动转静训练
+to_static=1  # 是否开启动转静训练
 
 python -u  -m paddle.distributed.launch \
-    --gpus "0,1,2,3" \
     --log_dir  "output/$task_name""_log" \
     run_pretrain_auto.py \
     --model_type "deepseekv3_auto" \
@@ -44,37 +45,45 @@ python -u  -m paddle.distributed.launch \
     --input_dir "./data" \
     --output_dir "output/$task_name" \
     --split 949,50,1 \
-    --max_seq_length 2048 \
+    --max_seq_length 4096 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 2 \
-    --gradient_accumulation_steps 2 \
-    --use_flash_attention 0 \
-    --use_fused_rms_norm 1 \
-    --fp16 0 \
-    --fp16_opt_level "O2"  \
-    --scale_loss 1024 \
-    --pipeline_parallel_degree 1 \
-    --tensor_parallel_degree 2 \
-    --sharding_parallel_degree 2 \
+    --gradient_accumulation_steps 16 \
     --learning_rate 0.0001 \
     --min_learning_rate 0.00001 \
-    --max_steps 2 \
-    --save_steps 5000000 \
+    --max_grad_norm 1.0 \
     --weight_decay 0.01 \
     --warmup_ratio 0.01 \
-    --logging_steps 1\
-    --dataloader_num_workers 1 \
-    --sharding "stage1" \
-    --eval_steps 1000000 \
-    --disable_tqdm true \
-    --continue_training 0\
-    --recompute 0 \
     --do_train \
+    --continue_training 0 \
     --do_eval \
+    --eval_steps 1000000 \
     --device "gpu" \
     --data_impl "mmap" \
+    --disable_tqdm true \
+    --dataloader_num_workers 1 \
+    --bf16 1 \
+    --fp16_opt_level "O2"  \
+    --amp_master_grad true \
+    --recompute false \
+    --recompute_use_reentrant true \
+    --recompute_granularity full_attn \
     --enable_auto_parallel 1 \
-    --max_grad_norm 1.0 \
-    --num_hidden_layers 1 \
     --use_intermediate_api true \
     --to_static $to_static \
+    --fuse_attention_ffn true \
+    --fuse_attention_qkv true \
+    --fused_linear_param_grad_add 1 \
+    --fuse_sequence_parallel_allreduce true \
+    --use_flash_attention true \
+    --use_fused_rope true \
+    --use_fused_rms_norm true \
+    --scale_loss 1024 \
+    --sharding_parallel_degree 1 \
+    --sharding "stage1" \
+    --tensor_parallel_degree 8 \
+    --pipeline_parallel_degree 1 \
+    --max_steps 1 \
+    --logging_steps 1 \
+    --save_steps 5000000 \
+    --num_hidden_layers 3
